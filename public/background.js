@@ -1,50 +1,69 @@
-console.log("background is running");
+console.log("background.js is working");
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("message reading ", message);
 
-  if (message.type === `SELECTED_TEXT`) {
-    console.log(message.payload, "selected text");
+    console.log("message reading", message);
 
-    //       const resume = await chrome.storage.local.get(["resume"])
+    if (message.type == `SELECTED_TEXT`) {
+        //Call ai
+        // console.log(message.payload,'selected text');
+        callApi(message.payload, sendResponse);
 
-    //       console.log(resume , "selected resume base 64")
+        //keep the message port open until sendResponse is called
+        return true;
+    }
+})
 
-    callApi(message , sendResponse) // calling callApi 
+async function callApi(message, sendResponse) {
 
-    return true;
-  }
-});
+    // console.log(message,"data coming from content to background");
 
-async function callApi(message , sendResponse) {
-  console.log(message, "data coming from content to background");
+    const body = {
+        resumeInBase64: message.resume.content,
+        jd: message.jd
+    }
+    // console.log(body,'body');
 
- 
-  const body = {
-    resumeInBase64: message.payload.resume.content,
-    jd: message.payload.jd,
-  };
-  console.log(body, "body");
- 
 
-  fetch(`http://localhost:4000/get-ats`, 
-    
-    {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    fetch(`http://localhost:4000/get-ats`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(body)
+        }
+    )
+        .then(async (data) => {
+            const response = await data.json().catch(() => ({}));
 
-    body: JSON.stringify(body),
-  })
-    .then((data) => data.json())
-    .then((response) => {
-      console.log(response, "data from api");
-      sendResponse(response.data.ats);
-    })
+            if (!data.ok) {
+                throw new Error(response.message || `Analysis request failed (${data.status})`);
+            }
 
-    .catch(err=> {
-      console.log(err, "err from fetch");
-      sendResponse("something went wrong");
-    });
+            return response;
+        })
+        .then((response) => {
+
+            chrome.storage.local.set({
+                atsResult: response
+            },
+            () => {
+        console.log("ATS Result Saved");
+        console.log(response);
+    }
+        );
+
+            sendResponse({ ok: true, result: response });
+        })
+        // .then((response)=>{
+        //     console.log(response,"data from api");
+        //     sendResponse(response.data.ats)
+        // })
+        .catch(err => {
+            console.log(err, "err from fetch");
+            sendResponse({ ok: false, error: err.message });
+        })
+
+
 }
